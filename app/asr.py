@@ -22,6 +22,13 @@ DEFAULT_MODEL = os.environ.get("IPWB_WHISPER_MODEL", "medium")
 USE_VAD = os.environ.get("IPWB_ASR_VAD", "1") != "0"
 SAMPLE_RATE = 16000
 
+# 国内直连 huggingface.co 基本连不上（报 WinError 10061），首次下载模型会直接失败。
+# 这里默认切到国内镜像；要换回官方或别的镜像，设环境变量 IPWB_HF_ENDPOINT 即可。
+# 必须在 import faster_whisper / huggingface_hub 之前设置，所以放在模块顶层。
+HF_ENDPOINT = (os.environ.get("IPWB_HF_ENDPOINT") or "https://hf-mirror.com").strip()
+if HF_ENDPOINT:
+    os.environ["HF_ENDPOINT"] = HF_ENDPOINT
+
 _q: "queue.Queue[str]" = queue.Queue()
 _queued: set[str] = set()
 _q_lock = threading.Lock()
@@ -100,7 +107,23 @@ def _load_model():
             except Exception as exc:  # 显卡不可用时退回 CPU
                 errors.append(f"{device}/{compute}: {exc}")
                 _model = None
-        raise RuntimeError("模型加载失败：" + "；".join(errors))
+        raise RuntimeError(_model_error(errors))
+
+
+def _model_error(errors: list[str]) -> str:
+    """把底层的一长串英文异常，翻成能照着做的中文提示。"""
+    joined = "；".join(errors)
+    network = any(k in joined for k in (
+        "ConnectError", "10061", "Connection", "timed out", "Timeout", "Temporary failure",
+    ))
+    if network:
+        return (
+            "语音模型下载失败：这台电脑连不上模型仓库。"
+            f"当前使用的地址是 {HF_ENDPOINT or '默认'}。"
+            "处理办法：① 换个网络再点一次转写；"
+            "② 或者把另一台已下载好模型的电脑里的 data\\models 文件夹，整个复制到本机同一位置。"
+        )
+    return "模型加载失败：" + joined
 
 
 def _mark_failed(source_id: str, message: str) -> None:
