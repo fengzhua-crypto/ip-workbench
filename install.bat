@@ -9,7 +9,45 @@ echo   IP 运营工作台 · 一键安装
 echo ==============================================
 echo.
 
-rem ---------- 1. 找可用的 Python 3.11 / 3.12 ----------
+rem ---------- 1. 检查 git（只影响「更新.bat」，缺了也照样能跑） ----------
+set "GIT="
+if exist "%ProgramFiles%\Git\cmd\git.exe" set "GIT=%ProgramFiles%\Git\cmd\git.exe"
+if not defined GIT if exist "%ProgramFiles(x86)%\Git\cmd\git.exe" set "GIT=%ProgramFiles(x86)%\Git\cmd\git.exe"
+if not defined GIT if exist "%LocalAppData%\Programs\Git\cmd\git.exe" set "GIT=%LocalAppData%\Programs\Git\cmd\git.exe"
+if not defined GIT (where git >nul 2>nul && set "GIT=git")
+
+if defined GIT (
+  echo [1/3] git 已安装，跳过。
+  goto have_git
+)
+
+echo [1/3] 没有找到 git，它是用来一键更新工作台的。
+if not exist "%~dp0installer\Git-2.56.1-64-bit.exe" goto no_git
+
+echo        正在用内置安装包装 git，请耐心等待，不要关窗口...
+echo.
+start /wait "" "%~dp0installer\Git-2.56.1-64-bit.exe" /VERYSILENT /NORESTART /NOCANCEL /SP- /o:PathOption=Cmd
+
+set "GIT="
+if exist "%ProgramFiles%\Git\cmd\git.exe" set "GIT=%ProgramFiles%\Git\cmd\git.exe"
+if not defined GIT if exist "%ProgramFiles(x86)%\Git\cmd\git.exe" set "GIT=%ProgramFiles(x86)%\Git\cmd\git.exe"
+if not defined GIT if exist "%LocalAppData%\Programs\Git\cmd\git.exe" set "GIT=%LocalAppData%\Programs\Git\cmd\git.exe"
+
+if defined GIT (
+  echo         git 安装完成。
+  goto have_git
+)
+
+:no_git
+echo.
+echo [提示] git 没有装上。工作台照样能用，只是「更新.bat」暂时用不了。
+echo        可以手动安装：https://git-scm.com/download/win 一路点 Next
+echo.
+
+:have_git
+echo.
+
+rem ---------- 2. 找可用的 Python 3.11 / 3.12 ----------
 set "PY="
 if defined IPWB_PYTHON if exist "%IPWB_PYTHON%" set "PY=%IPWB_PYTHON%"
 if not defined PY if exist "%~dp0python\python.exe" set "PY=%~dp0python\python.exe"
@@ -44,7 +82,7 @@ echo.
 :have_python
 echo 使用 Python：!PY!
 echo.
-echo [1/2] 安装工作台主程序依赖...
+echo [2/3] 安装工作台主程序依赖...
 echo       第一次安装需要联网，约下载 1.5GB，可能需要几分钟。
 echo.
 
@@ -59,11 +97,11 @@ if errorlevel 1 (
 )
 
 echo.
-echo [1/2] 完成。
+echo [2/3] 完成。
 echo.
 
 rem ---------- 3. 链接解析服务的独立环境 ----------
-echo [2/2] 安装链接解析服务，视频号链接解析要用...
+echo [3/3] 安装链接解析服务，视频号链接解析要用...
 echo.
 set "PARSER_DIR=%~dp0tools\media-parser"
 if not exist "%PARSER_DIR%\requirements.txt" (
