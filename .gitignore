@@ -34,6 +34,9 @@ tools/media-parser/.venv/
 CLAUDE.md
 docs/
 
+# ============ 对外分发的打包产物 ============
+dist/
+
 # ============ 编辑器和系统 ============
 .vscode/
 .idea/
