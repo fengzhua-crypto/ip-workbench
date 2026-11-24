@@ -191,12 +191,15 @@ def _build_storyboard(shots: list, segments: list) -> list:
             continue
 
         # 一镜到底的画面（固定机位）不切假镜头，按口播段落把它拆成几行，注明是同一镜头
-        segs = [
-            (float(s.get("start", 0)), float(s.get("end", 0)), (s.get("text") or "").strip())
-            for s in segments
-            if (s.get("text") or "").strip()
-            and float(s.get("end", 0)) >= start and float(s.get("start", 0)) <= end
-        ]
+        # 归属口径与上面一致：按中点判断，避免和上一行重复
+        segs = []
+        for s in segments:
+            text = (s.get("text") or "").strip()
+            if not text:
+                continue
+            mid = (float(s.get("start", 0)) + float(s.get("end", 0))) / 2
+            if start <= mid <= end:
+                segs.append((float(s.get("start", 0)), float(s.get("end", 0)), text))
         groups: list[tuple[float, float, str]] = []
         buf: list[str] = []
         group_start = 0.0

@@ -15,7 +15,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import config, db, ocr, video
+from . import config, db, ocr, subtitles, video
 
 MODEL_DIR = config.DATA_DIR / "models"
 DEFAULT_MODEL = os.environ.get("IPWB_WHISPER_MODEL", "medium")
@@ -316,6 +316,31 @@ def _transcribe(source_id: str) -> None:
             _progress[source_id] = min(99, int(float(seg.end) / duration * 100))
     paragraphs = _build_paragraphs(words_all) if words_all else _paragraphs_from_segments(segs)
 
+    # 画面字幕优先：视频里作者自己打的字幕，比听音识别准得多
+    subtitle_info: dict = {}
+    if path.suffix.lower() in (".mp4", ".mov", ".mkv", ".avi", ".webm", ".flv", ".m4v") and subtitles.enabled():
+        sub = subtitles.extract(Path(path), duration)
+        subtitle_info = {
+            "ok": bool(sub.get("ok")),
+            "coverage": sub.get("coverage", 0),
+            "count": sub.get("count", 0),
+            "band": sub.get("band"),
+            "reason": sub.get("reason", ""),
+        }
+        if sub.get("ok") and sub.get("coverage", 0) >= 0.6 and len(sub.get("segments") or []) >= 5:
+            # 用字幕时间轴替换转写结果，后面分段、分镜、拆解都按字幕走
+            segs = [
+                {"start": s["start"], "end": s["end"], "text": s["text"],
+                 "avg_logprob": 0.0, "words": []}
+                for s in sub["segments"]
+            ]
+            words_all = []
+            paragraphs = _paragraphs_from_segments(segs)
+            parts = [s["text"] for s in segs]
+            subtitle_info["used"] = True
+        else:
+            subtitle_info["used"] = False
+
     raw_transcript = "\n".join(parts)
     suspect = _merge_ranges(suspect_ranges)
     ocr_lines: list[dict] = []
@@ -370,6 +395,7 @@ def _transcribe(source_id: str) -> None:
         },
         "shots": shots_data.get("shots") or [],
         "video": {**(shots_data.get("metrics") or {}), "error": video_error},
+        "subtitle": subtitle_info,
     }
     db.save_transcript(source_id, raw_transcript, duration, meta)
     db.log_event("asr.done", {
