@@ -219,12 +219,38 @@ def _build_paragraphs(words: list[dict]) -> list[dict]:
             current = dict(sentence)
             continue
         gap = sentence["start"] - current["end"]
-        if gap > 1.0 or len(current["text"]) >= 160:
+        # 段落别太长：超过 70 字就断开，句号收尾且已有 40 字也断开
+        ended = current["text"][-1:] in _SENT_END
+        if gap > 1.0 or len(current["text"]) >= 70 or (ended and len(current["text"]) >= 40):
             paragraphs.append(current)
             current = dict(sentence)
         else:
             current["text"] += sentence["text"]
             current["end"] = sentence["end"]
+    if current:
+        paragraphs.append(current)
+    return paragraphs
+
+
+def _paragraphs_from_segments(segs: list[dict]) -> list[dict]:
+    """没有词级时间戳时，用段级时间戳合并成自然段（同样控制长度）。"""
+    paragraphs: list[dict] = []
+    current: dict | None = None
+    for seg in segs:
+        text = (seg.get("text") or "").strip()
+        if not text:
+            continue
+        if current is None:
+            current = {"start": seg["start"], "end": seg["end"], "text": text}
+            continue
+        gap = float(seg["start"]) - float(current["end"])
+        ended = current["text"][-1:] in _SENT_END
+        if gap > 1.0 or len(current["text"]) >= 70 or (ended and len(current["text"]) >= 40):
+            paragraphs.append(current)
+            current = {"start": seg["start"], "end": seg["end"], "text": text}
+        else:
+            current["text"] += text
+            current["end"] = seg["end"]
     if current:
         paragraphs.append(current)
     return paragraphs
@@ -250,7 +276,9 @@ def _transcribe(source_id: str) -> None:
         beam_size=5,
         vad_filter=USE_VAD,
         condition_on_previous_text=False,
-        word_timestamps=True,
+        # 词级时间戳开着会漏字（实测同一条视频 208 字 vs 266 字，中段整句消失），
+        # 段落与分镜用段级时间戳已经够用，所以保持关闭。
+        word_timestamps=False,
         initial_prompt="以下是普通话口播视频的字幕，请输出简体中文，并加标点。",
     )
 
@@ -286,9 +314,7 @@ def _transcribe(source_id: str) -> None:
         parts.append(text)
         if duration:
             _progress[source_id] = min(99, int(float(seg.end) / duration * 100))
-    paragraphs = _build_paragraphs(words_all) if words_all else [
-        {"start": s["start"], "end": s["end"], "text": s["text"]} for s in segs
-    ]
+    paragraphs = _build_paragraphs(words_all) if words_all else _paragraphs_from_segments(segs)
 
     raw_transcript = "\n".join(parts)
     suspect = _merge_ranges(suspect_ranges)

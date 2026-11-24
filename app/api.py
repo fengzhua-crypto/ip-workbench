@@ -134,6 +134,7 @@ def _join_tokens(tokens: list[str]) -> str:
 
 
 def _build_storyboard(shots: list, segments: list) -> list:
+    """把口播按时间归属到镜头。有词级时间戳用词；没有就用段，一段只归一个镜头，避免重复。"""
     words = []
     for seg in segments:
         for word in seg.get("words") or []:
@@ -144,32 +145,43 @@ def _build_storyboard(shots: list, segments: list) -> list:
                     float(word.get("end", 0)),
                     text,
                 ))
-    words.sort(key=lambda x: x[0])
+
     buckets: list[list[str]] = [[] for _ in shots]
-    shot_index = 0
-    for w_start, w_end, text in words:
-        mid = (w_start + w_end) / 2
-        while shot_index < len(shots) and mid > shots[shot_index].get("end", 0):
-            shot_index += 1
-        if shot_index >= len(shots):
-            break
-        if mid >= shots[shot_index].get("start", 0):
-            buckets[shot_index].append(text)
+    if words:
+        words.sort(key=lambda x: x[0])
+        shot_index = 0
+        for w_start, w_end, text in words:
+            mid = (w_start + w_end) / 2
+            while shot_index < len(shots) and mid > shots[shot_index].get("end", 0):
+                shot_index += 1
+            if shot_index >= len(shots):
+                break
+            if mid >= shots[shot_index].get("start", 0):
+                buckets[shot_index].append(text)
+    else:
+        # 段级时间戳：每段按中点归到一个镜头，绝不重复出现
+        for seg in segments:
+            text = (seg.get("text") or "").strip()
+            if not text:
+                continue
+            mid = (float(seg.get("start", 0)) + float(seg.get("end", 0))) / 2
+            target = 0
+            for i, shot in enumerate(shots):
+                if float(shot.get("start", 0)) <= mid <= float(shot.get("end", 0)):
+                    target = i
+                    break
+                if mid > float(shot.get("end", 0)):
+                    target = i
+            buckets[target].append(text)
 
     rows = []
     for i, shot in enumerate(shots):
         start, end = shot.get("start", 0), shot.get("end", 0)
-        line = _join_tokens(buckets[i]) if words else ""
-        if not line:
-            line = "".join(
-                s.get("text", "") for s in segments
-                if s.get("end", 0) >= start and s.get("start", 0) <= end
-            )
         rows.append({
             "time": f"{_fmt_seconds(start)}–{_fmt_seconds(end)}",
             "shot": f"镜头 {shot.get('index', i + 1)}",
             "duration": shot.get("duration", 0),
-            "line": line[:300],
+            "line": _join_tokens(buckets[i])[:300],
             "note": "",
             "keyframe": shot.get("keyframe", ""),
         })
