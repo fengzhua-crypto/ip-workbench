@@ -192,6 +192,7 @@
         query: "",
         listFilter: "all",
         decoTab: "video",
+        viewer: null,
         accountForm: { name: "", platform: "视频号", links: "", storyboard: true },
         accountSubmitting: false,
         accountProgress: "",
@@ -279,10 +280,39 @@
       noteImages() {
         if (!this.isNote) return [];
         const sid = this.current.source_id || "";
-        return (this.current.data.images || []).map((img) => ({
-          ...img,
-          url: img.file && sid ? `/media/notes/${sid}/${img.file}` : "",
-        }));
+        const list = this.current.data.images || [];
+        return list.map((img, i) => {
+          // 角色按位置定：第 1 张封面，最后一张结束，中间依次内页1、内页2……
+          const role = i === 0 ? "封面" : (i === list.length - 1 ? "结束" : `内页${i}`);
+          return {
+            ...img,
+            role,
+            url: img.file && sid ? `/media/notes/${sid}/${img.file}` : "",
+          };
+        });
+      },
+      noteKeywords() {
+        const ta = this.current && this.current.data && this.current.data.title_analysis;
+        return (ta && ta.keywords) || [];
+      },
+      noteTags() {
+        const d = this.current && this.current.data;
+        if (!d) return [];
+        if (d.tags && d.tags.length) return d.tags;
+        // 老记录里没有 tags 字段时，从正文里现抠，避免为此重跑一次云端拆解
+        const out = [];
+        const re = /#([^#\s]{1,30}?)(?:\[话题\])?#/g;
+        let m;
+        while ((m = re.exec(d.desc || ""))) {
+          const t = (m[1] || "").trim();
+          if (t && !out.includes(t)) out.push(t);
+        }
+        return out;
+      },
+      noteCombinedText() {
+        return this.noteImages
+          .map((img) => `【${img.role}】\n${img.text || "（没有文字）"}`)
+          .join("\n\n");
       },
       pageTitle() { return PAGES[this.route] || "首页"; },
       sectionLabel() { return SECTIONS[this.route] || "首页"; },
@@ -585,6 +615,13 @@
       },
     },
     methods: {
+      openViewer(img) {
+        if (!img || !img.url) return;
+        this.viewer = { url: img.url, role: img.role };
+      },
+      closeViewer() {
+        this.viewer = null;
+      },
       // 图文笔记：按图片序号取模型给的版式说明
       planFor(index) {
         const plan = (this.current && this.current.data && this.current.data.image_plan) || [];
@@ -1782,75 +1819,29 @@
               </header>
 
               <template v-if="isNote">
-                <div class="block-head"><span>标题分析</span></div>
                 <table class="sheet-table">
                   <tbody>
                     <tr><th>钩子</th><td>{{ current.data.title_analysis && current.data.title_analysis.hook }}</td></tr>
                     <tr><th>公式</th><td>{{ current.data.title_analysis && current.data.title_analysis.formula }}</td></tr>
-                    <tr><th>关键词</th><td>
-                      <div class="tag-row">
-                        <span class="tag green" v-for="k in ((current.data.title_analysis && current.data.title_analysis.keywords) || [])" :key="k">{{ k }}</span>
-                      </div>
-                    </td></tr>
-                  </tbody>
-                </table>
-
-                <div class="block-head" style="margin-top: 22px"><span>图文结构</span></div>
-                <table class="sheet-table">
-                  <thead><tr><th>段落</th><th>作用</th><th>手法</th><th>依据</th></tr></thead>
-                  <tbody>
-                    <tr v-for="(s, i) in (current.data.structure || [])" :key="i">
-                      <td>{{ s.section }}</td>
-                      <td>{{ s.purpose }}</td>
-                      <td>{{ s.technique }}</td>
-                      <td class="sheet-note">{{ s.evidence }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <div class="block-head" style="margin-top: 22px">
-                  <span>图片（{{ noteImages.length }} 张 · 点开看图上文字）</span>
-                </div>
-                <div class="note-grid">
-                  <details class="note-item" v-for="img in noteImages" :key="img.index">
-                    <summary>
-                      <img v-if="img.url" :src="img.url" :alt="'第 ' + img.index + ' 张'" loading="lazy" />
-                      <span v-else class="note-missing">第 {{ img.index }} 张没下载到</span>
-                      <span class="note-idx">{{ img.index }}</span>
-                    </summary>
-                    <div class="note-tags">
-                      <span class="tag" v-if="planFor(img.index).role">{{ planFor(img.index).role }}</span>
-                      <span class="tag green" v-if="planFor(img.index).type">{{ planFor(img.index).type }}</span>
-                    </div>
-                    <p class="note-summary" v-if="planFor(img.index).summary">{{ planFor(img.index).summary }}</p>
-                    <p class="note-summary" v-if="planFor(img.index).note">{{ planFor(img.index).note }}</p>
-                    <div class="note-text">{{ img.text || (img.error ? ('下载失败：' + img.error) : '没有识别到文字') }}</div>
-                  </details>
-                </div>
-
-                <div class="block-head" style="margin-top: 22px"><span>金句（原文）</span></div>
-                <div class="quote" v-for="(q, i) in (current.data.key_lines || [])" :key="i">{{ q }}</div>
-
-                <table class="sheet-table" style="margin-top: 18px">
-                  <tbody>
                     <tr>
-                      <th>语气</th>
+                      <th>关键词</th>
                       <td>
-                        {{ current.data.emotion && current.data.emotion.tone }}
-                        <span class="sheet-note">{{ current.data.emotion && current.data.emotion.arc }}</span>
+                        <div class="tag-row">
+                          <span class="tag green" v-for="k in noteKeywords" :key="k">{{ k }}</span>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>标签</th>
+                      <td>
+                        <div class="tag-row">
+                          <span class="tag" v-for="t in noteTags" :key="t">{{ t }}</span>
+                        </div>
                       </td>
                     </tr>
                     <tr><th>评论引导</th><td>{{ current.data.conversion && current.data.conversion.comment_hook }}</td></tr>
                     <tr><th>私信引导</th><td>{{ current.data.conversion && current.data.conversion.dm_hook }}</td></tr>
                     <tr><th>整体号召</th><td>{{ current.data.conversion && current.data.conversion.cta }}</td></tr>
-                    <tr>
-                      <th>可复制</th>
-                      <td>
-                        <div class="tag-row">
-                          <span class="tag green" v-for="(t, i) in (current.data.takeaways || [])" :key="i">{{ t }}</span>
-                        </div>
-                      </td>
-                    </tr>
                     <tr>
                       <th>注意点</th>
                       <td><span class="sheet-note" v-for="(r, i) in (current.data.risks || [])" :key="i">{{ r }}</span></td>
@@ -1858,8 +1849,39 @@
                   </tbody>
                 </table>
 
-                <div class="block-head" style="margin-top: 22px"><span>原文正文</span></div>
-                <div class="transcript-text">{{ current.data.desc }}</div>
+                <div class="block-head" style="margin-top: 22px"><span>图文结构</span></div>
+                <table class="sheet-table note-structure">
+                  <thead><tr><th>图</th><th>要点分析</th><th>正文（图上文字）</th></tr></thead>
+                  <tbody>
+                    <tr v-for="img in noteImages" :key="img.index">
+                      <td class="note-role">{{ img.role }}</td>
+                      <td>{{ planFor(img.index).summary || '—' }}</td>
+                      <td class="note-cell">{{ img.text || (img.error ? ('下载失败：' + img.error) : '没有识别到文字') }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <div class="block-head" style="margin-top: 22px">
+                  <span>图片（{{ noteImages.length }} 张 · 点击看大图）</span>
+                </div>
+                <div class="note-grid">
+                  <button type="button" class="note-thumb" v-for="img in noteImages" :key="img.index"
+                          @click="openViewer(img)">
+                    <img v-if="img.url" :src="img.url" :alt="img.role" loading="lazy" />
+                    <span v-else class="note-missing">{{ img.role }}没下载到</span>
+                  </button>
+                </div>
+
+                <div class="block-head" style="margin-top: 22px"><span>原文</span></div>
+                <div class="note-sub-title">笔记正文</div>
+                <div class="transcript-text">{{ current.data.desc || '（这条笔记没有正文）' }}</div>
+                <div class="note-sub-title" style="margin-top: 16px">图片文字（按结构汇总）</div>
+                <div class="transcript-text">{{ noteCombinedText }}</div>
+
+                <div v-if="viewer" class="lightbox" @click="closeViewer">
+                  <img :src="viewer.url" :alt="viewer.role" />
+                  <div class="lightbox-cap">{{ viewer.role }}</div>
+                </div>
               </template>
 
               <section class="timeline-block" v-if="!isNote">

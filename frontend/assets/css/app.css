@@ -746,39 +746,25 @@ a { color: inherit; text-decoration: none; }
   gap: 14px;
   margin-top: 12px;
 }
-.note-item {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface);
-  overflow: hidden;
-}
-.note-item > summary {
+.note-thumb {
   position: relative;
   display: block;
-  cursor: pointer;
-  list-style: none;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
   background: #f2ede2;
+  overflow: hidden;
+  cursor: zoom-in;
 }
-.note-item > summary::-webkit-details-marker { display: none; }
-.note-item > summary img {
+.note-thumb:disabled { cursor: default; }
+.note-thumb img {
   display: block;
   width: 100%;
   height: 210px;
   object-fit: cover;
+  transition: transform .25s ease;
 }
-.note-idx {
-  position: absolute;
-  left: 8px;
-  top: 8px;
-  min-width: 22px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, .55);
-  color: #fff;
-  font-size: 12px;
-  line-height: 18px;
-  text-align: center;
-}
+.note-thumb:hover img { transform: scale(1.03); }
 .note-missing {
   display: flex;
   align-items: center;
@@ -787,24 +773,50 @@ a { color: inherit; text-decoration: none; }
   color: var(--muted);
   font-size: 12px;
 }
-.note-tags {
-  display: flex;
-  gap: 6px;
-  padding: 10px 12px 0;
-  flex-wrap: wrap;
-}
-.note-summary {
-  margin: 6px 12px 0;
-  font-size: 12px;
-  line-height: 1.6;
+
+.note-role {
+  white-space: nowrap;
   color: var(--ink-soft);
+  font-size: 13px;
 }
-.note-text {
-  margin: 8px 12px 12px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--line);
+.note-cell {
+  white-space: pre-wrap;
   font-size: 13px;
   line-height: 1.75;
-  white-space: pre-wrap;
-  color: var(--ink);
+  color: var(--ink-soft);
+}
+.note-structure td:first-child { width: 76px; }
+.note-structure td:nth-child(2) { width: 34%; }
+
+.note-sub-title {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  background: rgba(20, 18, 15, .82);
+  cursor: zoom-out;
+}
+.lightbox img {
+  max-width: min(92vw, 1100px);
+  max-height: 82vh;
+  border-radius: 10px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, .45);
+  background: #fff;
+}
+.lightbox-cap {
+  color: #f3efe6;
+  font-size: 13px;
+  letter-spacing: .04em;
 }

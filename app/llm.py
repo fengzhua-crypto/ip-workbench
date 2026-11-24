@@ -677,21 +677,31 @@ IMAGE_NOTE_PROMPT = """你是图文笔记（小红书一类）的内容分析师
 
 只输出一个 JSON 对象，结构如下：
 {
-  "title_analysis": {"hook": "标题在抓什么", "formula": "标题用的公式，如 痛点+数字+身份", "keywords": ["3-6 个关键词"]},
-  "structure": [{"section": "开头/展开/收尾 之类", "purpose": "这一段干什么", "technique": "用了什么手法", "evidence": "原文或图上原话"}],
-  "image_plan": [{"index": 1, "role": "封面/内页/结尾", "type": "大字/要点/对比/截图/真人", "summary": "这张图在讲什么", "note": "版式或排版上的观察"}],
-  "key_lines": ["正文或图上的原句，3-6 条"],
-  "emotion": {"tone": "整体语气", "arc": "情绪怎么推进"},
-  "conversion": {"comment_hook": "评论区引导的具体写法", "dm_hook": "私信/收藏引导", "cta": "整体行动号召"},
-  "takeaways": ["3-5 条可复制的做法"],
+  "title_analysis": {"hook": "标题在抓什么", "formula": "标题公式，如 年龄+反常识结论", "keywords": ["3-6 个关键词"]},
+  "image_plan": [{"index": 1, "summary": "这一张的要点分析，一两句说清它在干什么"}],
+  "conversion": {"comment_hook": "评论区引导的具体写法", "dm_hook": "私信或收藏引导", "cta": "整体行动号召"},
   "risks": ["对标时的注意点"]
 }
 
 硬性要求：
-1. 图片画面你看不到，只能依据图上提取的文字推断版式；凡属推断的表述要写明「推断」。
-2. 不要编造点赞、收藏、播放数据。
-3. key_lines 必须是原文，不要改写。
-4. 只输出 JSON，不要解释。"""
+1. image_plan 必须覆盖每一张图，index 与输入完全一致，不要漏、不要合并。
+2. 每张图只写「要点分析」，不要复述图上原文（原文由系统单独展示）。
+3. 图片画面你看不到，只能依据图上文字推断；不要描述配色、构图、人物长相。
+4. 不编造点赞、收藏、播放数据。
+5. 只输出 JSON，不要解释。"""
+
+
+_TAG_RE = re.compile(r"#([^#\s]{1,30}?)(?:\[话题\])?#")
+
+
+def note_tags(desc: str) -> list[str]:
+    """从正文里抠出 #话题# 标签（小红书风格），保序去重。"""
+    tags: list[str] = []
+    for m in _TAG_RE.finditer(desc or ""):
+        tag = m.group(1).strip()
+        if tag and tag not in tags:
+            tags.append(tag)
+    return tags
 
 
 def decompose_image_note(title: str, desc: str, images: list,
@@ -742,6 +752,7 @@ def decompose_image_note(title: str, desc: str, images: list,
             "kind": "image_note",
             "title": title,
             "desc": desc,
+            "tags": note_tags(desc),
             "author": author,
             "platform": platform,
             "images": [
