@@ -175,16 +175,53 @@ def _build_storyboard(shots: list, segments: list) -> list:
             buckets[target].append(text)
 
     rows = []
+    LONG_SHOT = 15.0
     for i, shot in enumerate(shots):
-        start, end = shot.get("start", 0), shot.get("end", 0)
-        rows.append({
-            "time": f"{_fmt_seconds(start)}–{_fmt_seconds(end)}",
-            "shot": f"镜头 {shot.get('index', i + 1)}",
-            "duration": shot.get("duration", 0),
-            "line": _join_tokens(buckets[i])[:300],
-            "note": "",
-            "keyframe": shot.get("keyframe", ""),
-        })
+        start, end = float(shot.get("start", 0)), float(shot.get("end", 0))
+        number = shot.get("index", i + 1)
+        if end - start <= LONG_SHOT:
+            rows.append({
+                "time": f"{_fmt_seconds(start)}–{_fmt_seconds(end)}",
+                "shot": f"镜头 {number}",
+                "duration": shot.get("duration", 0),
+                "line": _join_tokens(buckets[i])[:300],
+                "note": "",
+                "keyframe": shot.get("keyframe", ""),
+            })
+            continue
+
+        # 一镜到底的画面（固定机位）不切假镜头，按口播段落把它拆成几行，注明是同一镜头
+        segs = [
+            (float(s.get("start", 0)), float(s.get("end", 0)), (s.get("text") or "").strip())
+            for s in segments
+            if (s.get("text") or "").strip()
+            and float(s.get("end", 0)) >= start and float(s.get("start", 0)) <= end
+        ]
+        groups: list[tuple[float, float, str]] = []
+        buf: list[str] = []
+        group_start = 0.0
+        for s_start, s_end, text in segs:
+            if not buf:
+                group_start = s_start
+            buf.append(text)
+            if s_end - group_start >= 9 or len("".join(buf)) >= 90:
+                groups.append((group_start, s_end, "".join(buf)))
+                buf = []
+        if buf:
+            groups.append((group_start, segs[-1][1] if segs else end, "".join(buf)))
+        if not groups:
+            groups = [(start, end, _join_tokens(buckets[i]))]
+
+        total = len(groups)
+        for gi, (g_start, g_end, text) in enumerate(groups, 1):
+            rows.append({
+                "time": f"{_fmt_seconds(g_start)}–{_fmt_seconds(g_end)}",
+                "shot": f"镜头 {number} · {gi}/{total}",
+                "duration": round(g_end - g_start, 2),
+                "line": text[:300],
+                "note": "同一镜头连续画面",
+                "keyframe": shot.get("keyframe", ""),
+            })
     return rows
 
 
