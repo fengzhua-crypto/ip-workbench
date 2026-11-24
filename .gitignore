@@ -1,0 +1,41 @@
+# ============ Python ============
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ============ 运行时数据与密钥（整个 data/，含数据库、模型、登录态、上传、导出） ============
+# data/ 由程序启动时自动创建，不属于代码；里面可能有 API Key、登录 Cookie 等敏感信息，绝不能进仓库。
+data/
+tools/media-parser/data/
+
+# media-parser 的独立虚拟环境
+tools/media-parser/.venv/
+
+# ============ 数据库（兜底，即使不在 data/ 里也排除） ============
+*.db
+*.db-shm
+*.db-wal
+
+# ============ 密钥与环境变量 ============
+.env
+.env.*
+
+# ============ 日志 ============
+*.log
+
+# ============ 内部文档（含账号矩阵、人事、环境状态，不进仓库） ============
+# CLAUDE.md 是给 AI 维护者看的技术约定，含内部信息，只留在本机。
+# docs/ 下是内部接续备忘与运营口径，同样不进仓库。
+CLAUDE.md
+docs/
+
+# ============ 编辑器和系统 ============
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

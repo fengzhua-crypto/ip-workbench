@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>IP 运营工作台 · 首页设计稿</title>
+<style>
+  :root {
+    --bg: #F7F2E8;
+    --bg-soft: #FBF7EE;
+    --surface: #FFFDF8;
+    --surface-2: #FBE6C2;
+    --ink: #2B2A26;
+    --ink-soft: #6F6A60;
+    --muted: #9A9488;
+    --line: #E8E0D2;
+    --line-soft: #F0EADD;
+    --green: #2A7C13;
+    --green-deep: #1F5E0E;
+    --green-soft: #EAF5DC;
+    --green-bright: #76C457;
+    --coral: #C06A3E;
+    --coral-soft: #FBE6C2;
+    --gold: #C98A3E;
+    --red: #B4552F;
+    --radius-lg: 24px;
+    --radius-md: 16px;
+    --radius-sm: 10px;
+    --shadow: 0 10px 30px -18px rgba(46, 60, 50, .28);
+    --font-ui: "Inter", "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    --font-serif: "Source Han Serif SC", "Noto Serif SC", "Songti SC", "STZhongsong", "SimSun", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100vh; }
+
+  /* rail */
+  .rail {
+    background: var(--bg-soft);
+    border-right: 1px solid var(--line-soft);
+    padding: 22px 16px 18px;
+    display: flex; flex-direction: column;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; padding: 2px 8px 26px; }
+  .brand-mark {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--green-deep); color: #F7F2E8;
+    display: grid; place-items: center;
+    font-family: var(--font-serif); font-size: 14px; letter-spacing: .04em;
+  }
+  .brand-text strong { display: block; font-size: 15px; font-weight: 700; letter-spacing: .01em; }
+  .brand-text span { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .nav { flex: 1; }
+  .nav-label { font-size: 11px; color: var(--muted); padding: 0 10px 6px; margin-top: 14px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 11px; margin-bottom: 3px;
+    border-radius: 12px; color: var(--ink-soft); font-size: 13.5px;
+  }
+  .nav-item .ico { width: 18px; text-align: center; font-size: 15px; }
+  .nav-item.active { background: var(--green-soft); color: var(--green-deep); font-weight: 700; }
+  .nav-item .badge {
+    margin-left: auto; font-size: 11px; background: var(--coral); color: #fff;
+    border-radius: 20px; padding: 1px 7px;
+  }
+  .rail-foot { border-top: 1px solid var(--line-soft); padding: 12px 8px 0; }
+  .mode { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-soft); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .rail-meta { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+  /* main */
+  .main { min-width: 0; }
+  .topbar {
+    height: 62px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 34px;
+  }
+  .crumb { font-size: 12px; color: var(--muted); }
+  .crumb b { color: var(--ink); font-weight: 600; }
+  .top-right { display: flex; align-items: center; gap: 10px; }
+  .date { font-size: 12px; color: var(--muted); }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%; background: var(--green-deep);
+    color: #F7F2E8; display: grid; place-items: center; font-size: 12px;
+  }
+  .content { padding: 8px 34px 48px; max-width: 1280px; }
+
+  .home-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin: 10px 0 24px; }
+  .greeting {
+    font-family: var(--font-serif); font-size: 32px; font-weight: 700;
+    letter-spacing: .01em; line-height: 1.3; margin: 0;
+  }
+  .greeting em { font-style: normal; color: var(--green); }
+  .sub { margin: 7px 0 0; color: var(--ink-soft); font-size: 13.5px; }
+  .head-actions { display: flex; gap: 9px; padding-bottom: 4px; }
+
+  .btn {
+    height: 38px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--green-deep); font-size: 13px; font-family: inherit;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn-primary { background: var(--green); border-color: var(--green); color: #fff; }
+
+  .home-grid { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); gap: 18px; }
+  .col { display: flex; flex-direction: column; gap: 18px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 22px 24px;
+  }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+  .card-head h2 { font-size: 16px; font-weight: 700; margin: 0; }
+  .card-head .note { font-size: 12px; color: var(--muted); }
+
+  /* hero */
+  .hero {
+    position: relative; overflow: hidden;
+    background: linear-gradient(140deg, #2A7C13 0%, #1F5E0E 78%);
+    color: #F7F2E8; border-radius: var(--radius-lg); padding: 26px 28px 24px;
+    min-height: 214px; display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .hero-label { font-size: 13px; color: rgba(247, 242, 232, .72); }
+  .hero-mid { display: flex; align-items: flex-end; gap: 14px; margin-top: 6px; }
+  .hero-number { font-family: var(--font-serif); font-size: 58px; line-height: 1.05; letter-spacing: .01em; }
+  .hero-delta {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--green-bright); color: #173B0B; font-size: 12px;
+    border-radius: 20px; padding: 4px 11px; margin-bottom: 9px;
+  }
+  .hero-foot { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: rgba(247,242,232,.6); margin-top: 16px; }
+  .hero-ring, .hero-ring-2 {
+    position: absolute; border-radius: 50%; border: 1px solid rgba(247,242,232,.13);
+    pointer-events: none;
+  }
+  .hero-ring { width: 280px; height: 280px; right: -90px; top: -110px; }
+  .hero-ring-2 { width: 180px; height: 180px; right: -40px; top: -60px; border-color: rgba(247,242,232,.09); }
+
+  /* metrics */
+  .metric { display: flex; align-items: baseline; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
+  .metric:last-child { border-bottom: 0; padding-bottom: 2px; }
+  .metric-label { font-size: 12.5px; color: var(--ink-soft); }
+  .metric-value { font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
+  .metric-delta { font-size: 11.5px; color: var(--green); margin-left: 7px; }
+  .metric-delta.down { color: var(--red); }
+  .metric-sub { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; text-align: right; }
+
+  /* focus list */
+  .focus { list-style: none; margin: 0; padding: 0; }
+  .focus li { display: flex; align-items: center; gap: 13px; padding: 13px 0; border-bottom: 1px solid var(--line-soft); }
+  .focus li:last-child { border-bottom: 0; padding-bottom: 2px; }
+  .focus-ico {
+    width: 38px; height: 38px; border-radius: 12px; background: var(--green-soft);
+    display: grid; place-items: center; font-size: 17px; flex: 0 0 38px;
+  }
+  .focus-main { flex: 1; min-width: 0; }
+  .focus-title { font-size: 14px; font-weight: 600; }
+  .focus-meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .focus .btn { height: 32px; padding: 0 13px; border-radius: 10px; font-size: 12.5px; flex: 0 0 auto; }
+  .tag { display: inline-flex; align-items: center; font-size: 11px; border-radius: 20px; padding: 2px 9px; }
+  .tag.green { background: var(--green-soft); color: var(--green-deep); }
+  .tag.coral { background: var(--coral-soft); color: #8A4A1E; }
+  .tag.gold { background: #F7EBD8; color: #8A5A16; }
+
+  /* week */
+  .week { list-style: none; margin: 0; padding: 0; }
+  .week li { display: flex; align-items: flex-start; gap: 11px; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+  .week li:last-child { border-bottom: 0; padding-bottom: 2px; }
+  .week-day { width: 34px; flex: 0 0 34px; font-size: 11px; color: var(--muted); padding-top: 2px; }
+  .week-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 7px; flex: 0 0 7px; background: var(--line); }
+  .week-dot.on { background: var(--green); }
+  .week-dot.hot { background: #C06A3E; }
+  .week-text { font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; }
+  .week-text b { color: var(--ink); font-weight: 600; }
+
+  .footnote { margin-top: 16px; font-size: 11.5px; color: var(--muted); display: flex; justify-content: space-between; }
+  .footnote a { color: var(--green); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="rail">
+    <div class="brand">
+      <div class="brand-mark">IP</div>
+      <div class="brand-text">
+        <strong>运营工作台</strong>
+        <span>单人 · 本地运行</span>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-label">工作台</div>
+      <div class="nav-item active"><span class="ico">⌂</span>首页</div>
+
+      <div class="nav-label">资产</div>
+      <div class="nav-item"><span class="ico">◉</span>IP 档案</div>
+      <div class="nav-item"><span class="ico">▤</span>数据库</div>
+
+      <div class="nav-label">创作</div>
+      <div class="nav-item"><span class="ico">◫</span>对标拆解<span class="badge">2</span></div>
+      <div class="nav-item"><span class="ico">✦</span>选题库</div>
+      <div class="nav-item"><span class="ico">✎</span>写稿</div>
+
+      <div class="nav-label">运营</div>
+      <div class="nav-item"><span class="ico">▦</span>内容计划</div>
+    </nav>
+
+    <div class="rail-foot">
+      <div class="mode"><span class="dot"></span>数据已同步</div>
+      <div class="rail-meta">127.0.0.1:8741 · v0.2</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="crumb">工作台 / <b>首页</b></div>
+      <div class="top-right">
+        <span class="date">2026-11-12 周四</span>
+        <div class="avatar">我</div>
+      </div>
+    </div>
+
+    <div class="content">
+      <header class="home-head">
+        <div>
+          <h1 class="greeting">下午好，今天也<em>按自己的节奏</em>来。</h1>
+          <p class="sub">昨天发了 1 条，粉丝净增 46。今天先拆一条，再写一条。</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn">同步数据</button>
+          <button class="btn btn-primary">＋ 新建拆解</button>
+        </div>
+      </header>
+
+      <div class="home-grid">
+        <div class="col">
+          <section class="hero">
+            <div class="hero-ring"></div>
+            <div class="hero-ring-2"></div>
+            <div>
+              <div class="hero-label">粉丝总数</div>
+              <div class="hero-mid">
+                <div class="hero-number">3,210</div>
+                <span class="hero-delta">↑ 46 昨日新增</span>
+              </div>
+            </div>
+            <div class="hero-foot">
+              <span>视频号 · 运营账号</span>
+              <span>数据截至 11-12 09:30</span>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2>今日重点</h2>
+              <span class="note">3 件 · 约 2 小时</span>
+            </div>
+            <ul class="focus">
+              <li>
+                <div class="focus-ico">◫</div>
+                <div class="focus-main">
+                  <div class="focus-title">拆解 1 条母婴对标</div>
+                  <div class="focus-meta">《一条视频让你学懂“钙”》· 30 分钟</div>
+                </div>
+                <span class="tag green">进行中</span>
+                <button class="btn">继续</button>
+              </li>
+              <li>
+                <div class="focus-ico">✎</div>
+                <div class="focus-main">
+                  <div class="focus-title">写稿：春季补钙选题</div>
+                  <div class="focus-meta">标题 + 口播稿 + 分镜 · 45 分钟</div>
+                </div>
+                <span class="tag gold">待开始</span>
+                <button class="btn">开始</button>
+              </li>
+              <li>
+                <div class="focus-ico">▦</div>
+                <div class="focus-main">
+                  <div class="focus-title">确认本周排期</div>
+                  <div class="focus-meta">本周 3 条内容，已排 1 条 · 15 分钟</div>
+                </div>
+                <span class="tag coral">今天截止</span>
+                <button class="btn">去排期</button>
+              </li>
+            </ul>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2>今天选题</h2>
+              <span class="note">3 条 · 拆解 / 抓取 / 手动</span>
+            </div>
+            <ul class="focus">
+              <li>
+                <div class="focus-ico">✦</div>
+                <div class="focus-main">
+                  <div class="focus-title">为什么你补的钙，孩子根本没吸收</div>
+                  <div class="focus-meta">角度：把“补钙”拆成吸收率 · 来源：拆解《一条视频让你学懂“钙”》</div>
+                </div>
+                <span class="tag green">拆解</span>
+                <button class="btn">去写稿</button>
+              </li>
+              <li>
+                <div class="focus-ico">✦</div>
+                <div class="focus-main">
+                  <div class="focus-title">春季长高，家长最该盯的不是钙</div>
+                  <div class="focus-meta">角度：睡眠和运动的优先级 · 来源：每日抓取 · 热榜</div>
+                </div>
+                <span class="tag gold">抓取</span>
+                <button class="btn">去写稿</button>
+              </li>
+              <li>
+                <div class="focus-ico">✦</div>
+                <div class="focus-main">
+                  <div class="focus-title">母婴店不会告诉你的 3 个补钙误区</div>
+                  <div class="focus-meta">角度：站在家长这边说真话 · 来源：手动添加</div>
+                </div>
+                <span class="tag coral">手动</span>
+                <button class="btn">去写稿</button>
+              </li>
+            </ul>
+          </section>
+        </div>
+
+        <div class="col">
+          <section class="card">
+            <div class="card-head">
+              <h2>昨日数据</h2>
+              <span class="note">11-11</span>
+            </div>
+            <div class="metric">
+              <span class="metric-label">总阅读</span>
+              <span><span class="metric-value">12,480</span><span class="metric-delta">+18%</span></span>
+            </div>
+            <div class="metric">
+              <span class="metric-label">单条最高</span>
+              <span><span class="metric-value">4,206</span><em class="metric-sub">《一条视频让你学懂“钙”》</em></span>
+            </div>
+            <div class="metric">
+              <span class="metric-label">互动率</span>
+              <span><span class="metric-value">4.2%</span><span class="metric-delta down">-0.3%</span></span>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2>本周待办</h2>
+              <span class="note">还差 2 件</span>
+            </div>
+            <ul class="week">
+              <li><span class="week-day">周一</span><span class="week-dot on"></span><span class="week-text"><b>拆 2 条对标</b> · 已完成 1 条</span></li>
+              <li><span class="week-day">周二</span><span class="week-dot hot"></span><span class="week-text"><b>写稿</b> · 春季补钙选题</span></li>
+              <li><span class="week-day">周三</span><span class="week-dot"></span><span class="week-text">拍摄 + 粗剪</span></li>
+              <li><span class="week-day">周四</span><span class="week-dot"></span><span class="week-text">发布第 2 条</span></li>
+              <li><span class="week-day">周五</span><span class="week-dot"></span><span class="week-text">T+1 数据复盘</span></li>
+            </ul>
+          </section>
+
+          <div class="footnote">
+            <span>演示数据 · 未接入自动抓取</span>
+            <a href="#">查看数据详情 →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

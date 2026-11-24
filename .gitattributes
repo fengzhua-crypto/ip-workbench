@@ -1,0 +1,16 @@
+# Windows 批处理必须是 CRLF 行尾，否则 cmd.exe 会把命令切碎（尤其带中文时），
+# 表现为双击后窗口一闪、什么都不显示。
+# 这条对 git clone 和 GitHub 下载 ZIP 都生效。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Shell 脚本用 LF
+*.sh text eol=lf
+
+# 二进制文件不要做行尾转换
+*.xlsx binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.exe binary
