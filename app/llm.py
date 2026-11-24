@@ -673,22 +673,34 @@ def decompose(title: str, transcript: str, duration: float = 0,
         return data
 
 
-IMAGE_NOTE_PROMPT = """你是图文笔记（小红书一类）的内容分析师。用户会给你一条笔记的标题、正文，以及按顺序提取的每张图片上的文字。
+IMAGE_NOTE_PROMPT = """你是图文笔记（小红书一类）的内容分析师。用户会给你一条笔记的标题、正文，以及每一张图片上分别提取出来的标题和正文。
 
 只输出一个 JSON 对象，结构如下：
 {
-  "title_analysis": {"hook": "标题在抓什么", "formula": "标题公式，如 年龄+反常识结论", "keywords": ["3-6 个关键词"]},
-  "image_plan": [{"index": 1, "summary": "这一张的要点分析，一两句说清它在干什么"}],
+  "title_analysis": {"hook": "标题在抓什么", "formula": "标题公式，如 年龄锚点+反常识结论", "keywords": ["3-6 个关键词"]},
+  "image_plan": [{"index": 1, "summary": "这一张的要点分析"}],
   "conversion": {"comment_hook": "评论区引导的具体写法", "dm_hook": "私信或收藏引导", "cta": "整体行动号召"},
   "risks": ["对标时的注意点"]
 }
 
-硬性要求：
-1. image_plan 必须覆盖每一张图，index 与输入完全一致，不要漏、不要合并。
-2. 每张图只写「要点分析」，不要复述图上原文（原文由系统单独展示）。
-3. 图片画面你看不到，只能依据图上文字推断；不要描述配色、构图、人物长相。
-4. 不编造点赞、收藏、播放数据。
-5. 只输出 JSON，不要解释。"""
+image_plan 里每一条 summary 必须同时回答三件事，缺一不可：
+1. 这一张在整篇里承担什么功能：推进 / 举例 / 对比 / 收束 / 引导关注；
+2. 靠什么方式完成：编号体系、具体场景、反例、提问、身份背书、数字清单等；
+3. 对读者起什么作用：觉得被说中、想照做、想收藏、想评论。
+
+**严禁把图上的文字换个说法再复述一遍。**
+
+不合格（只是复述，不算分析）：
+「第一条：自己吃饭，把勺子还给他，反对追喂。」
+
+合格（有分析）：
+「用『追喂』这个具体场景戳痛点，再用『把勺子还给他』给出可执行动作；一句反面一句正面，家长能直接照着做。」
+
+其他要求：
+1. 每张图都要写，index 与输入一一对应，不要漏、不要合并。
+2. 图片画面你看不到，不要描述配色、构图、人物长相。
+3. 不编造点赞、收藏、播放数据。
+4. 只输出 JSON，不要解释。"""
 
 
 _TAG_RE = re.compile(r"#([^#\s]{1,30}?)(?:\[话题\])?#")
@@ -713,11 +725,15 @@ def decompose_image_note(title: str, desc: str, images: list,
 
     blocks = []
     for item in images or []:
-        text = (item.get("text") or "").strip()
-        if not text:
+        head = (item.get("title") or "").strip()
+        body = (item.get("body") or item.get("text") or "").strip()
+        if not head and not body:
             continue
-        blocks.append(f"【第 {item.get('index')} 张】\n{text[:400]}")
-    images_text = "\n\n".join(blocks)[:6000] or "（没有识别到图片文字）"
+        role = item.get("role") or f"第 {item.get('index')} 张"
+        blocks.append(
+            f"【{role}】标题：{head[:80] or '（无）'}\n正文：{body[:420] or '（无）'}"
+        )
+    images_text = "\n\n".join(blocks)[:7000] or "（没有识别到图片文字）"
 
     rule = _skill_rule("image-note-decompose.md")
     system = IMAGE_NOTE_PROMPT + (("\n\n" + rule) if rule else "")
@@ -757,6 +773,9 @@ def decompose_image_note(title: str, desc: str, images: list,
             "platform": platform,
             "images": [
                 {"index": i.get("index"), "file": i.get("file"),
+                 "title": i.get("title") or "",
+                 "paragraphs": i.get("paragraphs") or [],
+                 "body": i.get("body") or "",
                  "text": i.get("text") or "", "error": i.get("error") or ""}
                 for i in (images or [])
             ],

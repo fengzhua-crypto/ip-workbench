@@ -37,11 +37,20 @@ def main() -> int:
         item = {"file": path, "lines": []}
         try:
             res, _ = engine(path)
-            for _box, text, score in (res or []):
+            for box, text, score in (res or []):
                 text = (text or "").strip()
                 if not text:
                     continue
-                item["lines"].append({"text": text, "score": round(float(score), 3)})
+                ys = [float(pt[1]) for pt in box]
+                xs = [float(pt[0]) for pt in box]
+                item["lines"].append({
+                    "text": text,
+                    "score": round(float(score), 3),
+                    "y": round(min(ys), 1),
+                    "h": round(max(ys) - min(ys), 1),
+                    "x": round(min(xs), 1),
+                    "w": round(max(xs) - min(xs), 1),
+                })
         except Exception as exc:  # noqa: BLE001
             item["error"] = str(exc)
         result.append(item)

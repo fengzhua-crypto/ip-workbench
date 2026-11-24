@@ -333,8 +333,61 @@ def _fetch_note_images(source: dict, info: dict, meta: dict, referer: str) -> di
     return meta
 
 
+def _split_note_lines(lines: list[dict]) -> dict:
+    """把一张图上的文字切成「标题」和「正文段落」。
+
+    标题靠字号判断：OCR 会返回每行外框高度，标题字大、正文字小。
+    正文按句子合段：行尾没有句号就连到下一行，避免"一句一断"。
+    """
+    if not lines:
+        return {"title": "", "paragraphs": [], "body": ""}
+
+    # 同一水平线上的文字块（左右并排）要按 x 从左到右读，不能让 y 的细微差别打乱顺序
+    heights_all = sorted(float(l.get("h") or 0) for l in lines if l.get("h"))
+    median_h = heights_all[len(heights_all) // 2] if heights_all else 10.0
+    band = max(8.0, median_h * 0.6)
+    ordered = sorted(lines, key=lambda l: (int((l.get("y") or 0) / band), l.get("x") or 0))
+
+    heights = [float(l.get("h") or 0) for l in ordered]
+    max_h = max(heights) if heights else 0
+    cut = max_h * 0.72
+
+    # 标题：字号明显偏大的、从上往下连续几行
+    head_idx: list[int] = []
+    if max_h and len(ordered) <= 5 and min(heights) >= max_h * 0.45:
+        # 封面常见：整张就几行大字（字号有大小层次但都远大于正文），那就全是标题
+        head_idx = list(range(len(ordered)))
+    else:
+        for i, line in enumerate(ordered[:4]):
+            if float(line.get("h") or 0) >= cut:
+                head_idx.append(i)
+            else:
+                break
+    # 字号一样时退化：第一行短且以冒号/问号结尾，也算标题
+    if not head_idx:
+        first = ordered[0].get("text") or ""
+        if len(first) <= 22 and first[-1:] in "：:？?！!":
+            head_idx = [0]
+
+    title = "\n".join(ordered[i].get("text") or "" for i in head_idx)
+    body_lines = [l.get("text") or "" for i, l in enumerate(ordered) if i not in head_idx]
+
+    sentences: list[str] = []
+    buf = ""
+    for text in body_lines:
+        buf += text
+        if text[-1:] in "。！？；":
+            sentences.append(buf)
+            buf = ""
+    if buf.strip():
+        sentences.append(buf)
+
+    paragraphs = ["".join(sentences[i:i + 2]) for i in range(0, len(sentences), 2)]
+    return {"title": title, "paragraphs": paragraphs, "body": "\n".join(paragraphs)}
+
+
 def _ocr_note_images(source_id: str, meta: dict) -> None:
-    """给图文笔记的图片逐张提取文字，结果写回 meta["note"]["images"][i]["text"]。"""
+    """给图文笔记的图片逐张提取文字，并按「标题 / 正文」分开写回 meta。"""
     note = meta.get("note") or {}
     images = [i for i in (note.get("images") or []) if i.get("file") and not i.get("error")]
     if not images:
@@ -350,6 +403,10 @@ def _ocr_note_images(source_id: str, meta: dict) -> None:
         row = by_file.get(item["file"]) or {}
         lines = [l for l in (row.get("lines") or []) if (l.get("score") or 0) >= 0.6]
         item["lines"] = lines
+        parts = _split_note_lines(lines)
+        item["title"] = parts["title"]
+        item["paragraphs"] = parts["paragraphs"]
+        item["body"] = parts["body"]
         item["text"] = "\n".join(l["text"] for l in lines)
     note["ocr_done"] = True
 

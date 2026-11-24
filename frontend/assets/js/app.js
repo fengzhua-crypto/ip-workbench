@@ -193,6 +193,7 @@
         listFilter: "all",
         decoTab: "video",
         viewer: null,
+        noteTab: "desc",
         accountForm: { name: "", platform: "视频号", links: "", storyboard: true },
         accountSubmitting: false,
         accountProgress: "",
@@ -284,9 +285,19 @@
         return list.map((img, i) => {
           // 角色按位置定：第 1 张封面，最后一张结束，中间依次内页1、内页2……
           const role = i === 0 ? "封面" : (i === list.length - 1 ? "结束" : `内页${i}`);
+          let title = img.title || "";
+          let paragraphs = (img.paragraphs || []).filter((p) => p && p.trim());
+          // 老数据没分过标题/正文，退回按行拆，避免空白
+          if (!title && !paragraphs.length && img.text) {
+            const lines = String(img.text).split("\n").filter((x) => x.trim());
+            title = lines[0] || "";
+            paragraphs = lines.slice(1);
+          }
           return {
             ...img,
             role,
+            title,
+            paragraphs,
             url: img.file && sid ? `/media/notes/${sid}/${img.file}` : "",
           };
         });
@@ -309,10 +320,30 @@
         }
         return out;
       },
-      noteCombinedText() {
-        return this.noteImages
-          .map((img) => `【${img.role}】\n${img.text || "（没有文字）"}`)
-          .join("\n\n");
+      noteDescClean() {
+        const d = (this.current && this.current.data && this.current.data.desc) || "";
+        // 正文里混着的 #话题# 标签去掉，标签在上面单独展示
+        return d.replace(/#[^#\s]{1,30}(?:\[话题\])?#/g, "")
+          .replace(/[ \t]{2,}/g, " ")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+      },
+      noteDescText() {
+        if (!this.isNote) return "";
+        const title = this.current.title || (this.current.data && this.current.data.title) || "";
+        return `标题：${title}\n\n${this.noteDescClean}`;
+      },
+      noteImagesText() {
+        if (!this.isNote) return "";
+        return this.noteImages.map((img) => {
+          const parts = [`【${img.role}】`];
+          if (img.title) parts.push(img.title);
+          if (img.paragraphs.length) parts.push(img.paragraphs.join("\n"));
+          return parts.join("\n");
+        }).join("\n\n");
+      },
+      noteAllText() {
+        return [this.noteDescText, this.noteImagesText].filter(Boolean).join("\n\n");
       },
       pageTitle() { return PAGES[this.route] || "首页"; },
       sectionLabel() { return SECTIONS[this.route] || "首页"; },
@@ -615,6 +646,25 @@
       },
     },
     methods: {
+      oneLine(text) {
+        return String(text || "").replace(/[\r\n]+/g, " ").trim();
+      },
+      async copyText(text, label) {
+        try {
+          await navigator.clipboard.writeText(text || "");
+          this.toast(label + "已复制");
+        } catch (e) {
+          this.toast("复制失败，请手动选中文字复制");
+        }
+      },
+      copyNoteCurrent() {
+        const isDesc = this.noteTab === "desc";
+        this.copyText(isDesc ? this.noteDescText : this.noteImagesText,
+          isDesc ? "笔记正文" : "图片文字");
+      },
+      copyNoteAll() {
+        this.copyText(this.noteAllText, "全部文字");
+      },
       openViewer(img) {
         if (!img || !img.url) return;
         this.viewer = { url: img.url, role: img.role };
@@ -1851,12 +1901,11 @@
 
                 <div class="block-head" style="margin-top: 22px"><span>图文结构</span></div>
                 <table class="sheet-table note-structure">
-                  <thead><tr><th>图</th><th>要点分析</th><th>正文（图上文字）</th></tr></thead>
+                  <thead><tr><th>图</th><th>要点分析</th></tr></thead>
                   <tbody>
                     <tr v-for="img in noteImages" :key="img.index">
                       <td class="note-role">{{ img.role }}</td>
-                      <td>{{ planFor(img.index).summary || '—' }}</td>
-                      <td class="note-cell">{{ img.text || (img.error ? ('下载失败：' + img.error) : '没有识别到文字') }}</td>
+                      <td class="note-analysis">{{ planFor(img.index).summary || '—' }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1872,11 +1921,45 @@
                   </button>
                 </div>
 
-                <div class="block-head" style="margin-top: 22px"><span>原文</span></div>
-                <div class="note-sub-title">笔记正文</div>
-                <div class="transcript-text">{{ current.data.desc || '（这条笔记没有正文）' }}</div>
-                <div class="note-sub-title" style="margin-top: 16px">图片文字（按结构汇总）</div>
-                <div class="transcript-text">{{ noteCombinedText }}</div>
+                <div class="block-head note-origin-head" style="margin-top: 28px">
+                  <span>原文</span>
+                  <button class="btn btn-sm" @click="copyNoteAll">复制全部文字</button>
+                </div>
+
+                <div class="tabs note-tabs">
+                  <button class="tab" :class="{ active: noteTab === 'desc' }" @click="noteTab = 'desc'">笔记正文</button>
+                  <button class="tab" :class="{ active: noteTab === 'images' }" @click="noteTab = 'images'">图片文字</button>
+                  <button class="btn btn-sm note-copy" @click="copyNoteCurrent">
+                    复制{{ noteTab === 'desc' ? '正文' : '图片文字' }}
+                  </button>
+                </div>
+
+                <div v-if="noteTab === 'desc'" class="note-pane">
+                  <div class="note-label">标题</div>
+                  <h3 class="note-title-text">{{ current.title || current.data.title || '（无标题）' }}</h3>
+                  <div class="note-label">正文</div>
+                  <p class="note-body-text" v-if="noteDescClean">{{ noteDescClean }}</p>
+                  <p class="note-body-text note-empty" v-else>（这条笔记没有正文）</p>
+                </div>
+
+                <div v-else class="note-pane note-pane-list">
+                  <details class="note-piece" v-for="img in noteImages" :key="img.index">
+                    <summary>
+                      <span class="note-piece-role">{{ img.role }}</span>
+                      <span class="note-piece-peek">{{ oneLine(img.title) || '（无标题）' }}</span>
+                    </summary>
+                    <template v-if="img.title">
+                      <div class="note-label">标题</div>
+                      <div class="note-piece-title">{{ img.title }}</div>
+                    </template>
+                    <template v-if="img.paragraphs.length">
+                      <div class="note-label">正文</div>
+                      <p class="note-piece-body" v-for="(p, i) in img.paragraphs" :key="i">{{ p }}</p>
+                    </template>
+                    <p class="note-piece-body note-empty"
+                       v-else-if="!img.text">{{ img.error ? ('下载失败：' + img.error) : '没有识别到文字' }}</p>
+                  </details>
+                </div>
 
                 <div v-if="viewer" class="lightbox" @click="closeViewer">
                   <img :src="viewer.url" :alt="viewer.role" />
