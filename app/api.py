@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from . import account_analysis, account_fetch, asr, config, dataxapi, db, link_parser, llm, ocr, tikhub
+from . import account_analysis, account_fetch, asr, config, dataxapi, db, link_parser, llm, note_ocr, ocr, tikhub
 from . import channels_sync, login_scan, scheduler
 from .demo import build_demo
 
@@ -246,25 +246,51 @@ def _new_decomposition(title: str, author: str, platform: str, url: str,
 
 
 def _fetch_link_source(source: dict) -> dict:
-    """把只有链接的素材解析成视频文件：解析 → 下载 → 自动转写。"""
+    """把只有链接的素材落地：视频下载后转写；图文笔记下载图片并识别文字。"""
     info = link_parser.parse(source["url"])
+    platform = info.get("platform") or source.get("platform") or "视频号"
+    kind = info.get("kind") or "video"
     title = (info.get("title") or "").strip()
     author = (info.get("author") or {}).get("nickname") or source.get("author") or ""
     cover = info.get("cover_url") or ""
-    dest = config.UPLOAD_DIR / f"{db.new_id('file')}.mp4"
-    size = link_parser.download(info["video_url"], dest)
+    referer = link_parser.referer_for(platform)
 
     meta = _jloads(source.get("meta"), {})
     meta["link"] = {
         "url": source["url"], "title": title, "cover": cover,
         "author": author, "stats": info.get("stats") or {},
+        "platform": platform, "kind": kind,
         "fetched_at": db.now_iso(),
     }
+
+    if kind == "image_note":
+        meta = _fetch_note_images(source, info, meta, referer)
+        with db.db() as conn:
+            conn.execute(
+                "UPDATE sources SET title=?, author=?, platform=?, status='ready', meta=? WHERE id=?",
+                (title or source.get("title") or "", author, platform,
+                 json.dumps(meta, ensure_ascii=False), source["id"]),
+            )
+            if title:
+                conn.execute(
+                    "UPDATE decompositions SET title=? WHERE source_id=? "
+                    "AND (title='' OR title='未命名内容' OR title='链接素材（待解析）')",
+                    (title, source["id"]),
+                )
+        db.log_event("link.fetched_note", {
+            "source": source["id"],
+            "images": len((meta.get("note") or {}).get("images") or []),
+        })
+        return db.get_source(source["id"])
+
+    dest = config.UPLOAD_DIR / f"{db.new_id('file')}.mp4"
+    size = link_parser.download(info["video_url"], dest, referer=referer)
+
     with db.db() as conn:
         conn.execute(
-            "UPDATE sources SET title=?, author=?, file_name=?, file_path=?, file_size=?, "
+            "UPDATE sources SET title=?, author=?, platform=?, file_name=?, file_path=?, file_size=?, "
             "status='ready', meta=? WHERE id=?",
-            (title or source.get("title") or "", author, dest.name, str(dest),
+            (title or source.get("title") or "", author, platform, dest.name, str(dest),
              size, json.dumps(meta, ensure_ascii=False), source["id"]),
         )
         if title:
@@ -273,13 +299,89 @@ def _fetch_link_source(source: dict) -> dict:
                 "AND (title='' OR title='未命名内容' OR title='链接素材（待解析）')",
                 (title, source["id"]),
             )
-    db.log_event("link.fetched", {"source": source["id"], "size": size})
+    db.log_event("link.fetched", {"source": source["id"], "size": size, "platform": platform})
     asr.enqueue(source["id"])
     return db.get_source(source["id"])
 
 
+def _fetch_note_images(source: dict, info: dict, meta: dict, referer: str) -> dict:
+    """下载图文笔记的全部图片，并做本地文字识别。"""
+    sid = source["id"]
+    img_dir = config.DATA_DIR / "images" / sid
+    img_dir.mkdir(parents=True, exist_ok=True)
+
+    images: list[dict] = []
+    for idx, raw in enumerate(info.get("image_list") or [], 1):
+        url = raw.get("url") if isinstance(raw, dict) else raw
+        if not url:
+            continue
+        dest = img_dir / f"{idx:02d}.jpg"
+        item = {"index": idx, "file": dest.name, "source_url": url, "text": "", "lines": []}
+        try:
+            item["bytes"] = link_parser.download_image(url, dest, referer=referer)
+        except link_parser.LinkError as exc:
+            item["error"] = str(exc)
+        images.append(item)
+
+    meta["note"] = {
+        "title": (info.get("title") or "").strip(),
+        "desc": (info.get("desc") or "").strip(),
+        "images": images,
+        "ocr_done": False,
+    }
+    _ocr_note_images(sid, meta)
+    return meta
+
+
+def _ocr_note_images(source_id: str, meta: dict) -> None:
+    """给图文笔记的图片逐张提取文字，结果写回 meta["note"]["images"][i]["text"]。"""
+    note = meta.get("note") or {}
+    images = [i for i in (note.get("images") or []) if i.get("file") and not i.get("error")]
+    if not images:
+        return
+    base = config.DATA_DIR / "images" / source_id
+    try:
+        results = note_ocr.run([base / i["file"] for i in images])
+    except note_ocr.OcrUnavailable as exc:
+        note["ocr_error"] = str(exc)
+        return
+    by_file = {Path(str(r.get("file", ""))).name: r for r in results}
+    for item in images:
+        row = by_file.get(item["file"]) or {}
+        lines = [l for l in (row.get("lines") or []) if (l.get("score") or 0) >= 0.6]
+        item["lines"] = lines
+        item["text"] = "\n".join(l["text"] for l in lines)
+    note["ocr_done"] = True
+
+
+def _decompose_image_note(decomp_id: str, source: dict, title: str,
+                          old_data_raw: str, rerun: bool = False) -> None:
+    """图文笔记走独立的拆解通道：不转写、不做分镜。"""
+    meta = _jloads(source.get("meta"), {})
+    note = meta.get("note") or {}
+    images = note.get("images") or []
+    if not images:
+        _fail_decomposition(decomp_id, "没有拿到图片，无法拆解这条图文笔记")
+        return
+    try:
+        data = llm.decompose_image_note(
+            title or note.get("title") or "未命名笔记",
+            note.get("desc") or "",
+            images,
+            source.get("author") or "",
+            source.get("platform") or "小红书",
+        )
+    except Exception as exc:  # noqa: BLE001
+        _fail_decomposition(decomp_id, f"图文拆解失败：{exc}")
+        return
+    old_data = _jloads(old_data_raw, {})
+    if old_data.get("rewrite"):
+        data["rewrite"] = old_data["rewrite"]
+    _finish_decomposition(decomp_id, data, False, "重新拆解" if rerun else "图文笔记拆解")
+
+
 def _complete_decomposition(decomp_id: str, rerun: bool = False) -> None:
-    """链接先自动解析下载；有字幕就走云端模型拆解。"""
+    """链接先自动解析落地；视频走转写拆解，图文走图片识别拆解。"""
     try:
         with db.db() as conn:
             row = conn.execute(
@@ -296,6 +398,10 @@ def _complete_decomposition(decomp_id: str, rerun: bool = False) -> None:
             except link_parser.LinkError as exc:
                 _fail_decomposition(decomp_id, str(exc))
                 return
+        link_kind = ((_jloads(source.get("meta"), {}) if source else {}).get("link") or {}).get("kind")
+        if link_kind == "image_note":
+            _decompose_image_note(decomp_id, source, title, row["data"], rerun)
+            return
         source = _wait_transcript(source)
 
         if source and source.get("file_path"):

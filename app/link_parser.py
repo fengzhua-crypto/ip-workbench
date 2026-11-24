@@ -122,24 +122,45 @@ def parse(url: str) -> dict:
 
     if not payload.get("succ") or payload.get("retcode") != 200:
         message = payload.get("retdesc") or "链接解析失败"
-        if "YUANBAO_COOKIE" in message or "元宝" in message or "cookie" in message.lower():
+        low = message.lower()
+        if "XIAOHONGSHU_COOKIE" in message:
+            message = "这条小红书笔记需要登录态才能读取，请在拆解页点「小红书登录」后再试"
+        elif "YUANBAO_COOKIE" in message or "元宝" in message or "cookie" in low:
             message = "视频号链接需要先在拆解页点「元宝登录」扫码，登录后再试"
         raise LinkError(message)
     data = payload.get("data") or {}
-    if not data.get("video_url"):
-        raise LinkError("解析成功但没拿到视频地址（可能是图文或链接已失效）")
+    if not data.get("video_url") and not data.get("image_list"):
+        raise LinkError("解析成功但没拿到视频或图片（可能是私密笔记、日常作品，或链接已失效）")
+    # 内容形态：有视频就是视频，只有图片就是图文笔记
+    data["kind"] = "video" if data.get("video_url") else "image_note"
     return data
 
 
-def download(video_url: str, dest: Path, max_mb: int = 500) -> int:
-    """把视频下载到本机，返回字节数。"""
-    req = urllib.request.Request(video_url, headers={
-        "User-Agent": UA,
-        "Referer": "https://channels.weixin.qq.com/",
-    })
+# 各平台下载时需要的 Referer；带错平台会被 CDN 直接 403
+PLATFORM_REFERER = {
+    "小红书": "https://www.xiaohongshu.com/",
+    "抖音": "https://www.douyin.com/",
+    "视频号": "https://channels.weixin.qq.com/",
+    "微信视频号": "https://channels.weixin.qq.com/",
+}
+
+
+def referer_for(platform: str) -> str:
+    return PLATFORM_REFERER.get(platform or "", "")
+
+
+def _open(url: str, referer: str = "", method: str = "GET", timeout: int = 120):
+    headers = {"User-Agent": UA}
+    if referer:
+        headers["Referer"] = referer
+    return urllib.request.urlopen(urllib.request.Request(url, headers=headers, method=method), timeout=timeout)
+
+
+def download(video_url: str, dest: Path, max_mb: int = 1200, referer: str = "") -> int:
+    """把视频下载到本机，返回字节数。referer 要跟平台匹配。"""
     size = 0
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp, dest.open("wb") as fh:
+        with _open(video_url, referer) as resp, dest.open("wb") as fh:
             while True:
                 chunk = resp.read(1 << 20)
                 if not chunk:
@@ -160,6 +181,22 @@ def download(video_url: str, dest: Path, max_mb: int = 500) -> int:
         dest.unlink(missing_ok=True)
         raise LinkError("下载视频失败：文件为空")
     return size
+
+
+def download_image(url: str, dest: Path, referer: str = "") -> int:
+    """下载单张图片（图文笔记用）。"""
+    try:
+        with _open(url, referer, timeout=60) as resp:
+            data = resp.read()
+    except urllib.error.HTTPError as exc:
+        raise LinkError(f"下载图片失败：HTTP {exc.code}") from exc
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise LinkError("下载图片失败：网络中断") from exc
+    if not data:
+        raise LinkError("下载图片失败：内容为空")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    return len(data)
 
 
 # ---------- 元宝扫码登录 ----------

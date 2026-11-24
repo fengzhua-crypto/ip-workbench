@@ -272,6 +272,18 @@
       };
     },
     computed: {
+      // 图文笔记：没有字幕、分镜和时间轴，走另一套展示
+      isNote() {
+        return !!(this.current && this.current.data && this.current.data.kind === "image_note");
+      },
+      noteImages() {
+        if (!this.isNote) return [];
+        const sid = this.current.source_id || "";
+        return (this.current.data.images || []).map((img) => ({
+          ...img,
+          url: img.file && sid ? `/media/notes/${sid}/${img.file}` : "",
+        }));
+      },
       pageTitle() { return PAGES[this.route] || "首页"; },
       sectionLabel() { return SECTIONS[this.route] || "首页"; },
       isDemo() { return !this.settings || this.settings.demo_mode !== false; },
@@ -573,6 +585,12 @@
       },
     },
     methods: {
+      // 图文笔记：按图片序号取模型给的版式说明
+      planFor(index) {
+        const plan = (this.current && this.current.data && this.current.data.image_plan) || [];
+        const hit = plan.find((p) => Number(p.index) === Number(index));
+        return hit || {};
+      },
       async refresh() {
         try {
           const [ov, list] = await Promise.all([
@@ -1763,7 +1781,88 @@
                 </div>
               </header>
 
-              <section class="timeline-block">
+              <template v-if="isNote">
+                <div class="block-head"><span>标题分析</span></div>
+                <table class="sheet-table">
+                  <tbody>
+                    <tr><th>钩子</th><td>{{ current.data.title_analysis && current.data.title_analysis.hook }}</td></tr>
+                    <tr><th>公式</th><td>{{ current.data.title_analysis && current.data.title_analysis.formula }}</td></tr>
+                    <tr><th>关键词</th><td>
+                      <div class="tag-row">
+                        <span class="tag green" v-for="k in ((current.data.title_analysis && current.data.title_analysis.keywords) || [])" :key="k">{{ k }}</span>
+                      </div>
+                    </td></tr>
+                  </tbody>
+                </table>
+
+                <div class="block-head" style="margin-top: 22px"><span>图文结构</span></div>
+                <table class="sheet-table">
+                  <thead><tr><th>段落</th><th>作用</th><th>手法</th><th>依据</th></tr></thead>
+                  <tbody>
+                    <tr v-for="(s, i) in (current.data.structure || [])" :key="i">
+                      <td>{{ s.section }}</td>
+                      <td>{{ s.purpose }}</td>
+                      <td>{{ s.technique }}</td>
+                      <td class="sheet-note">{{ s.evidence }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <div class="block-head" style="margin-top: 22px">
+                  <span>图片（{{ noteImages.length }} 张 · 点开看图上文字）</span>
+                </div>
+                <div class="note-grid">
+                  <details class="note-item" v-for="img in noteImages" :key="img.index">
+                    <summary>
+                      <img v-if="img.url" :src="img.url" :alt="'第 ' + img.index + ' 张'" loading="lazy" />
+                      <span v-else class="note-missing">第 {{ img.index }} 张没下载到</span>
+                      <span class="note-idx">{{ img.index }}</span>
+                    </summary>
+                    <div class="note-tags">
+                      <span class="tag" v-if="planFor(img.index).role">{{ planFor(img.index).role }}</span>
+                      <span class="tag green" v-if="planFor(img.index).type">{{ planFor(img.index).type }}</span>
+                    </div>
+                    <p class="note-summary" v-if="planFor(img.index).summary">{{ planFor(img.index).summary }}</p>
+                    <p class="note-summary" v-if="planFor(img.index).note">{{ planFor(img.index).note }}</p>
+                    <div class="note-text">{{ img.text || (img.error ? ('下载失败：' + img.error) : '没有识别到文字') }}</div>
+                  </details>
+                </div>
+
+                <div class="block-head" style="margin-top: 22px"><span>金句（原文）</span></div>
+                <div class="quote" v-for="(q, i) in (current.data.key_lines || [])" :key="i">{{ q }}</div>
+
+                <table class="sheet-table" style="margin-top: 18px">
+                  <tbody>
+                    <tr>
+                      <th>语气</th>
+                      <td>
+                        {{ current.data.emotion && current.data.emotion.tone }}
+                        <span class="sheet-note">{{ current.data.emotion && current.data.emotion.arc }}</span>
+                      </td>
+                    </tr>
+                    <tr><th>评论引导</th><td>{{ current.data.conversion && current.data.conversion.comment_hook }}</td></tr>
+                    <tr><th>私信引导</th><td>{{ current.data.conversion && current.data.conversion.dm_hook }}</td></tr>
+                    <tr><th>整体号召</th><td>{{ current.data.conversion && current.data.conversion.cta }}</td></tr>
+                    <tr>
+                      <th>可复制</th>
+                      <td>
+                        <div class="tag-row">
+                          <span class="tag green" v-for="(t, i) in (current.data.takeaways || [])" :key="i">{{ t }}</span>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>注意点</th>
+                      <td><span class="sheet-note" v-for="(r, i) in (current.data.risks || [])" :key="i">{{ r }}</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <div class="block-head" style="margin-top: 22px"><span>原文正文</span></div>
+                <div class="transcript-text">{{ current.data.desc }}</div>
+              </template>
+
+              <section class="timeline-block" v-if="!isNote">
                 <div class="block-head">
                   <span>结构分段（推断）</span>
                   <span class="mono">{{ retentionSummary }}</span>
@@ -1780,7 +1879,7 @@
                 <div class="timeline-scale"><span>0:00</span><span>{{ scaleEnd }}</span></div>
               </section>
 
-              <table class="sheet-table">
+              <table class="sheet-table" v-if="!isNote">
                 <tbody>
                   <tr>
                     <th>钩子</th>
@@ -1837,19 +1936,19 @@
                 </tbody>
               </table>
 
-              <div class="block-head" style="margin-top: 22px">
+              <div class="block-head" style="margin-top: 22px" v-if="!isNote">
                 <span>可拍摄标题</span>
               </div>
-              <div class="tag-row">
+              <div class="tag-row" v-if="!isNote">
                 <span class="tag green" v-for="t in (current.data.title_options || [])" :key="t">{{ t }}</span>
               </div>
 
-              <div class="tabs">
+              <div class="tabs" v-if="!isNote">
                 <button class="tab" :class="{ active: tab === 'subtitle' }" @click="tab = 'subtitle'">原始字幕</button>
                 <button class="tab" :class="{ active: tab === 'board' }" @click="tab = 'board'">分镜</button>
               </div>
 
-              <div v-if="tab === 'subtitle'" class="tab-body">
+              <div v-if="!isNote && tab === 'subtitle'" class="tab-body">
                 <div class="sub-head">
                   <span class="sub-state" :class="subtitleState.kind">
                     <template v-if="subtitleState.kind === 'running'">正在转写<template v-if="subtitleState.progress != null"> · {{ subtitleState.progress }}%</template></template>
@@ -1889,7 +1988,7 @@
                 <div v-else-if="sourceInfo && sourceInfo.transcript" class="transcript-text">{{ sourceInfo.transcript }}</div>
               </div>
 
-              <div v-else-if="tab === 'board'" class="tab-body">
+              <div v-else-if="!isNote && tab === 'board'" class="tab-body">
                 <p v-if="current.options && current.options.storyboard === false" class="sub-hint">
                   这条在新建时选择了「不做分镜」，所以没有检测镜头。口播类内容通常不需要逐镜头拆分；
                   需要时可以重新新建一条并勾选「做分镜」。

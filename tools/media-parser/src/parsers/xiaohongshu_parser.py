@@ -174,6 +174,27 @@ class XiaohongshuParser(BaseParser):
             if not isinstance(video_info, dict):
                 return None
 
+            # 0. 优先取平台转码流：原片常是手机直传的 MOV，动辄几百 MB，
+            #    转码后的 h264 通常只有几十 MB，对转写和切镜完全够用。
+            stream = video_info.get('media', {}).get('stream', {}) or video_info.get('stream', {})
+            preferred, fallback = [], []
+            for codec in ('h264', 'h265', 'av1'):
+                codec_list = stream.get(codec, [])
+                if not isinstance(codec_list, list):
+                    continue
+                for item in codec_list:
+                    if not isinstance(item, dict) or not item.get('masterUrl'):
+                        continue
+                    clean_url = self._ensure_https(item.get('masterUrl'))
+                    if item.get('streamType') in (258, 301) or "X264_MP4" in (item.get('streamDesc') or ''):
+                        preferred.append(clean_url)
+                    else:
+                        fallback.append(clean_url)
+            if preferred:
+                return preferred[0]
+            if fallback:
+                return fallback[0]
+
             # 1. 优先提取 consumer 中的 originVideoKey（无水印原画视频 Key）
             consumer = video_info.get('consumer', {})
             origin_key = None
@@ -252,6 +273,26 @@ class XiaohongshuParser(BaseParser):
 
     def get_description(self):
         return self.note_data.get('desc', '') or None
+
+    def get_stats(self):
+        """点赞/收藏/评论/转发。小红书笔记数据里在 interactInfo。"""
+        info = self.note_data.get('interactInfo') or self.note_data.get('interact_info') or {}
+        if not isinstance(info, dict) or not info:
+            return None
+
+        def num(key):
+            try:
+                return int(info.get(key) or 0)
+            except (TypeError, ValueError):
+                return 0
+
+        stats = {
+            'like': num('likedCount'),
+            'fav': num('collectedCount'),
+            'comment': num('commentCount'),
+            'forward': num('shareCount'),
+        }
+        return stats if any(stats.values()) else None
 
     def get_cover_photo_url(self):
         cover = self.note_data.get('cover')

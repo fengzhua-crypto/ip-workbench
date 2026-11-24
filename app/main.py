@@ -41,6 +41,10 @@ def create_app() -> FastAPI:
 
     app.mount("/assets", StaticFiles(directory=config.FRONTEND_DIR / "assets"), name="assets")
     app.mount("/media/shots", StaticFiles(directory=config.DATA_DIR / "shots"), name="shots")
+    # 图文笔记的图片存档（data/images/<source_id>/01.jpg）
+    images_dir = config.DATA_DIR / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/media/notes", StaticFiles(directory=images_dir), name="notes")
 
     @app.get("/{full_path:path}")
     def index(full_path: str = ""):

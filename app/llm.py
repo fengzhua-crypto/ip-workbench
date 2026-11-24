@@ -673,6 +673,88 @@ def decompose(title: str, transcript: str, duration: float = 0,
         return data
 
 
+IMAGE_NOTE_PROMPT = """你是图文笔记（小红书一类）的内容分析师。用户会给你一条笔记的标题、正文，以及按顺序提取的每张图片上的文字。
+
+只输出一个 JSON 对象，结构如下：
+{
+  "title_analysis": {"hook": "标题在抓什么", "formula": "标题用的公式，如 痛点+数字+身份", "keywords": ["3-6 个关键词"]},
+  "structure": [{"section": "开头/展开/收尾 之类", "purpose": "这一段干什么", "technique": "用了什么手法", "evidence": "原文或图上原话"}],
+  "image_plan": [{"index": 1, "role": "封面/内页/结尾", "type": "大字/要点/对比/截图/真人", "summary": "这张图在讲什么", "note": "版式或排版上的观察"}],
+  "key_lines": ["正文或图上的原句，3-6 条"],
+  "emotion": {"tone": "整体语气", "arc": "情绪怎么推进"},
+  "conversion": {"comment_hook": "评论区引导的具体写法", "dm_hook": "私信/收藏引导", "cta": "整体行动号召"},
+  "takeaways": ["3-5 条可复制的做法"],
+  "risks": ["对标时的注意点"]
+}
+
+硬性要求：
+1. 图片画面你看不到，只能依据图上提取的文字推断版式；凡属推断的表述要写明「推断」。
+2. 不要编造点赞、收藏、播放数据。
+3. key_lines 必须是原文，不要改写。
+4. 只输出 JSON，不要解释。"""
+
+
+def decompose_image_note(title: str, desc: str, images: list,
+                         author: str = "", platform: str = "小红书") -> dict:
+    """图文笔记拆解：输入标题、正文和每张图的 OCR 文字。"""
+    cfg = config()
+    if not cfg["api_key"]:
+        raise LLMUnavailable("还没有配置云端模型 API Key，请到「设置」里填写")
+
+    blocks = []
+    for item in images or []:
+        text = (item.get("text") or "").strip()
+        if not text:
+            continue
+        blocks.append(f"【第 {item.get('index')} 张】\n{text[:400]}")
+    images_text = "\n\n".join(blocks)[:6000] or "（没有识别到图片文字）"
+
+    rule = _skill_rule("image-note-decompose.md")
+    system = IMAGE_NOTE_PROMPT + (("\n\n" + rule) if rule else "")
+    user = (
+        f"平台：{platform}\n作者：{author or '未知'}\n"
+        f"标题：{title}\n\n正文：\n{desc or '（无正文）'}\n\n"
+        f"图片文字（共 {len(images or [])} 张）：\n{images_text}"
+    )
+
+    with _lock:
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+        data = None
+        last_error = ""
+        for _attempt in range(2):
+            content = _chat(cfg, messages, 2600, as_json=True)
+            try:
+                data = _extract_json(content)
+                break
+            except Exception as exc:  # noqa: BLE001
+                last_error = str(exc)
+                messages += [
+                    {"role": "assistant", "content": content[:1500]},
+                    {"role": "user", "content": "上面的输出不是合法 JSON。请只重新输出一个合法的 JSON 对象。"},
+                ]
+        if data is None:
+            raise LLMUnavailable(f"模型输出无法解析：{last_error}")
+
+        data.update({
+            "kind": "image_note",
+            "title": title,
+            "desc": desc,
+            "author": author,
+            "platform": platform,
+            "images": [
+                {"index": i.get("index"), "file": i.get("file"),
+                 "text": i.get("text") or "", "error": i.get("error") or ""}
+                for i in (images or [])
+            ],
+            "engine": f"云端模型 {cfg['model']}",
+            "generated_at": db.now_iso(),
+        })
+        return data
+
+
 ACCOUNT_PROMPT = """你是短视频账号运营分析师。根据一个视频号账号的简介和已抓到的作品列表，分析这个账号的可对标之处。
 
 只输出一个 JSON 对象，结构如下：
